@@ -7,6 +7,7 @@ DEPENDS += " \
 	    gst-plugins-base \
 	    gst-plugins-ugly \
 	    minicom \
+	    avrdude \
 	    ntp \
 	   "
 
@@ -21,6 +22,8 @@ IMAGE_INSTALL += " \
 	     gst-plugins-base-audioresample \
 	     gst-plugins-base-alsa \
 	     gst-plugins-ugly-mad \
+	     minicom \
+	     avrdude \
 	     espeak \
 	     ntp \
 	    "
