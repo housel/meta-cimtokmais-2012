@@ -1,3 +1,5 @@
-FILESEXTRAPATHS_prepend := "${THISDIR}/${PN}-${PV}:"
+COMPATIBLE_MACHINE = "(beagleboard)"
 
-MACHINE_KERNEL_PR_append = "b"
+FILESPATH_prepend := "${FILE_DIRNAME}/linux-3.0:${FILE_DIRNAME}/linux-3.0/${MACHINE}:"
+
+MACHINE_KERNEL_PR_append = "f"
