@@ -12,7 +12,9 @@ SRC_URI = "http://archive.apache.org/dist/logging/log4cxx/0.10.0/apache-log4cxx-
 LIC_FILES_CHKSUM = "file://LICENSE;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 #build this:
-S = "${WORKDIR}/apache-${PN}-${PV}"
+S = "${WORKDIR}/apache-log4cxx-${PV}"
+
+BBCLASSEXTEND = "native"
 
 inherit autotools pkgconfig
 
