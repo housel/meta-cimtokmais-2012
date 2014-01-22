@@ -1,0 +1,332 @@
+#!/usr/bin/env python
+# Software License Agreement (BSD License)
+#
+# Copyright Peter S. Housel
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#  * Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#  * Redistributions in binary form must reproduce the above
+#    copyright notice, this list of conditions and the following
+#    disclaimer in the documentation and/or other materials provided
+#    with the distribution.
+#  * Neither the name of Willow Garage, Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived
+#    from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import os
+import os.path
+import sys
+import re
+
+import urlparse
+import urllib2
+import yaml
+import hashlib
+
+import rospkg
+import vcstools
+from rospkg.common import STACK_FILE, MANIFEST_FILE
+from rospkg.distro import load_distro, distro_uri
+from rospkg.stack import parse_stack_file, InvalidStack
+from rosinstall.locate import get_rosdoc_manifest, get_rosinstall,\
+     BRANCH_DEVEL, BRANCH_RELEASE
+
+#ROSINSTALL_URI = 'http://ros.org/rosinstalls/%s-ros-full.rosinstall'
+ROSINSTALL_URI = 'https://github.com/ros/rosdistro/blob/master/releases/%s.yaml'
+
+ros_root = '/tmp/ros'
+
+class RoscoeStack(object):
+    """
+    Object representation of a ROS Stack as seen by Roscoe
+    """
+    __slots__ = ['name', 'vcsclient', 'vcsuri', 'vcsversion',
+                 'version', 'summary', 'url', 'license',
+                 'depends', 'build_depends', 'build_type', 'vcsdir',
+                 'stack_file', 'catkin', 'packagedirs']
+
+    def __init__(self, rosinstall={}, ros_root=ros_root):
+        for vcs_type, data in rosinstall.iteritems():
+            self.name = data['local-name']
+            self.vcsuri = data['uri']
+            self.vcsversion = data.get('version', '')
+
+            vcspath = os.path.join(ros_root, self.name)
+            self.vcsclient = vcstools.VcsClient(vcs_type, vcspath)
+
+            self.catkin = False
+
+    def checkout(self, verbose=False):
+        if self.vcsclient.path_exists():
+            return self.vcsclient.update(self.vcsversion, verbose=verbose)
+        else:
+            return self.vcsclient.checkout(self.vcsuri, self.vcsversion, verbose=verbose)
+
+
+def make_layer(distro):
+    layername = 'meta-ros-' + distro
+
+    layerconfdir = os.path.join(layername, 'conf');
+    if not os.path.exists(layerconfdir):
+        os.makedirs(layerconfdir)
+    layerconf = os.path.join(layerconfdir, 'layer.conf')
+    lc = open(layerconf, 'w')
+    lc.write("# We have a conf and classes directory, append to BBPATH\n")
+    lc.write("BBPATH .= \":${LAYERDIR}\"\n\n")
+    lc.write("# We have a recipes directory, add to BBFILES\n")
+    lc.write("BBFILES += \"${LAYERDIR}/recipes*/*/*.bb ${LAYERDIR}/recipes*/*/*.bbappend\"\n\n")
+    lc.write("BBFILE_COLLECTIONS += \"%s\"\n" % layername)
+    lc.write("BBFILE_PATTERN_%s := \"^${LAYERDIR}/\"\n" % layername)
+    lc.write("BBFILE_PRIORITY_%s := \"10\"\n" % layername)
+    lc.close()
+
+    recipesdir = os.path.join(layername, 'recipes');
+    if not os.path.exists(recipesdir):
+        os.makedirs(recipesdir)
+
+    return recipesdir
+
+def file_md5(name):
+    f = open(name, 'r')
+    m = hashlib.md5()
+    m.update(f.read())
+    f.close()
+    return m.hexdigest()
+
+def make_recipe(recipesdir, distro, stack):
+    o = urlparse.urlparse(stack.vcsuri)
+    scheme = o.scheme
+    if stack.vcsclient.get_vcs_type_name() == 'svn':
+        head, tail = os.path.split(o.path)
+        stack.vcsdir = tail
+        src_uri = urlparse.urlunsplit(('svn', o.netloc, head, None, None))
+        src_uri += ';module=%s' % tail
+        src_uri += ';rev=%s' % stack.vcsversion.replace('-r', '')
+        src_uri += ';proto=%s' % scheme
+    elif stack.vcsclient.get_vcs_type_name() == 'git':
+        stack.vcsdir = stack.name
+        src_uri = urlparse.urlunsplit(('git', o.netloc, o.path, None, None))
+        src_uri += ';destsuffix=%s' % stack.name
+        src_uri += ';rev=%s' % stack.vcsversion
+        src_uri += ';protocol=%s' % scheme
+    elif stack.vcsclient.get_vcs_type_name() == 'hg':
+        if scheme == 'https': scheme = 'http' # FIXME
+        head, tail = os.path.split(o.path)
+        stack.vcsdir = tail
+        src_uri = urlparse.urlunsplit(('hg', o.netloc, head, None, None))
+        src_uri += ';module=%s' % tail #
+        src_uri += ';rev=%s' % stack.vcsversion
+        src_uri += ';proto=%s' % scheme
+    else:
+        sys.stderr.write('no ' + stack.vcsclient.get_vcs_type_name() + "\n")
+        sys.exit(1)
+
+    recipe_base = stack.name.replace('_', '-')
+    recipe_dir = os.path.join(recipesdir, recipe_base);
+    if not os.path.exists(recipe_dir):
+        os.makedirs(recipe_dir)
+
+    recipe_name = 'ros-' + distro + '-' + recipe_base
+
+    version = stack.version
+    recipe_fn = os.path.join(recipe_dir, recipe_name + '_' + version + '.bb')
+    recipe = open(recipe_fn, 'w')
+
+    if stack.summary:
+        recipe.write("SUMMARY = \"%s\"\n" % stack.summary)
+    #recipe.write("DESCRIPTION = \"%s\"\n" % stack.description)
+    if stack.url:
+        recipe.write("HOMEPAGE = \"%s\"\n" % stack.url)
+
+    licenses = re.split('\s*[/,;&]\s*', stack.license)
+    recipe.write("LICENSE  = \"%s\"\n" % (' & '.join(licenses)))
+
+    if stack.catkin:
+        recipe.write("LIC_FILES_CHKSUM = \"file://%s/stack.xml;md5=%s\"\n\n" % (stack.vcsdir, file_md5(stack.stack_file),))
+        recipe.write("VCSDIR = \"%s\"\n" % stack.vcsdir)
+        recipe.write("inherit catkin\n\n")
+    else:
+        recipe.write("LIC_FILES_CHKSUM = \"file://stack.xml;md5=%s\"\n\n" % (file_md5(stack.stack_file),))
+        recipe.write("STACK = \"%s\"\n" % stack.name)
+        recipe.write("inherit rosbuild\n\n")
+
+    recipe.write("BBCLASSEXTEND = \"native\"\n\n")
+
+    recipe.write("SRC_URI  = \"%s\"\n\n" % src_uri)
+
+    if stack.build_depends:
+        recipe.write("DEPENDS += \"\\\n")
+        for dependency in stack.build_depends:
+            if dependency != 'catkin': recipe.write("\t%s \\\n" % dependency)
+        recipe.write("\"\n\n")
+
+    if stack.depends:
+        recipe.write("RDEPENDS_${PN} += \"\\\n")
+        for dependency in stack.depends:
+            recipe.write("\t%s \\\n" % dependency)
+        recipe.write("\"\n\n")
+
+    if stack.packagedirs and not stack.catkin:
+        recipe.write("FILES_${PN}-dbg += \" \\\n")
+        for d in stack.packagedirs:
+            recipe.write("\t${ros_stacksdir}/${STACK}/%s/lib/.debug \\\n" % d)
+            recipe.write("\t${ros_stacksdir}/${STACK}/%s/bin/.debug \\\n" % d)
+        recipe.write("\"\n\n")
+
+        recipe.write("FILES_${PN}-staticdev += \" \\\n")
+        for d in stack.packagedirs:
+            recipe.write("\t${ros_stacksdir}/${STACK}/%s/lib/*.a \\\n" % d)
+        recipe.write("\"\n\n")
+
+        recipe.write("do_install_append() {\n")
+        for d in stack.packagedirs:
+            recipe.write("    rm -rf ${D}/${ros_stacksdir}/${STACK}/%s/build\n" % d)
+        recipe.write("}\n\n");
+
+    if stack.catkin:
+        recipe.write("S = \"${WORKDIR}\"\n\n")
+    else:
+        recipe.write("S = \"${WORKDIR}/%s\"\n\n" % stack.vcsdir)
+
+        if stack.vcsdir != stack.name:
+            recipe.write("do_configure_prepend() {\n")
+            recipe.write("    rm -f ${WORKDIR}/${STACK} && ln -s %s ${WORKDIR}/${STACK}\n" % stack.vcsdir)
+            recipe.write("}\n")
+
+    recipe.close()
+
+def load_rosinstall(distro):
+    return yaml.load(urllib2.urlopen(ROSINSTALL_URI % distro))
+
+def distro_recipes_main():
+    from optparse import OptionParser
+    parser = OptionParser(usage = "%prog [options] [stack ...]")
+    parser.add_option("--distro", action="store", dest="distro")
+    parser.add_option("--variant", action="append", dest="variants")
+
+    (options, stacks) = parser.parse_args()
+    distro = options.distro
+    variants = options.variants or ['robot'];
+
+    if not os.path.exists(ros_root):
+        os.makedirs(ros_root)
+
+    # Get distro base rosinstall info
+    rosinstalls = load_rosinstall(distro)
+
+    # Get distro information
+    uri = distro_uri(distro)
+    d = load_distro(uri)
+    for variant_name in variants:
+        variant = d.variants[variant_name]
+        for stack_name in variant.stack_names:
+            stack = d.stacks[stack_name]
+
+            vcs_config = stack.vcs_config
+            branch = 'release'
+            rosinstalls.extend(vcs_config.to_rosinstall(stack_name, branch, True))
+
+    for stack_name in stacks:
+        if stack_name in d.stacks:
+            stack = d.stacks[stack_name]
+
+            vcs_config = stack.vcs_config
+            branch = 'release'
+            rosinstalls.extend(vcs_config.to_rosinstall(stack_name, branch, True))
+        else:
+            try:
+                data, type_ = get_rosdoc_manifest(stack_name, distro)
+            except IOError:
+                sys.stderr.write('cannot locate information about %s\n'%(stack_name))
+                sys.exit(1)
+            rosinstalls.extend(get_rosinstall(stack_name, data, type_, branch))
+
+    roscoestacks = {}
+
+    # Check out everything
+    for rosinstall in rosinstalls:
+        if not isinstance(rosinstall, str):
+            stack = RoscoeStack(rosinstall)
+            roscoestacks[stack.name] = stack
+
+            stack.checkout(verbose=True)
+
+    # Initialize rosstack and rospack
+    rosstack = rospkg.RosStack(ros_paths=[ros_root])
+    rospack = rospkg.RosPack(ros_paths=[ros_root])
+
+    #recipesdir = make_layer(distro)
+
+    for stack_name in rosstack.list():
+        if stack_name not in roscoestacks: continue
+        print "stack " + stack_name
+        stack = roscoestacks[stack_name];
+        path = rosstack.get_path(stack_name)
+
+        stack.depends = rosstack.get_depends(stack_name, implicit=False)
+        print "  depends: " + (', '.join(stack.depends))
+        stack.build_depends = []
+
+        stack_manifest = rosstack.get_manifest(stack_name)
+        stack.url = stack_manifest.url
+        stack.license = stack_manifest.license
+        stack.summary = stack_manifest.brief
+        stack.version = rosstack.get_stack_version(stack_name)
+
+        stack.stack_file = os.path.join(path, STACK_FILE)
+        try:
+            catkin_stack = parse_stack_file(stack.stack_file);
+        except InvalidStack:
+            catkin_stack = None
+        if catkin_stack:
+            stack.build_depends = [p.name for p in catkin_stack.build_depends]
+            print "  build_depends: " + (', '.join(stack.build_depends))
+            stack.build_type = catkin_stack.build_type
+            print "  build_type: " + (stack.build_type or '?')
+
+            cmake_filename = os.path.join(path, 'CMakeLists.txt')
+            if os.path.isfile(cmake_filename):
+                for line in open(cmake_filename):
+                    if 'catkin_stack' in line:
+                        stack.catkin = True
+                        break
+
+
+        stack.packagedirs = set()
+        for package_name in rosstack.packages_of(stack_name):
+            print "  package: " + package_name
+            package_manifest = rospack.get_manifest(package_name)
+            #print "    author: " + (package_manifest.author or 'None')
+            print "    license: " + package_manifest.license
+            #print "    license url: " + package_manifest.license_url
+            #print "    description: " + package_manifest.description
+            print "    depends: " + (', '.join(rospack.get_depends(package_name, implicit=False)))
+            print "    rosdeps: " + (', '.join(rospack.get_rosdeps(package_name, implicit=False)))
+            #print "    exports: ", package_manifest.exports
+            print "    path: " + os.path.relpath(rospack.get_path(package_name), path)
+            stack.packagedirs.add(os.path.relpath(rospack.get_path(package_name), path))
+
+        make_recipe(os.getcwd(), distro, stack)
+
+    sys.exit(0)
+
+if __name__ == '__main__':
+    distro_recipes_main()
