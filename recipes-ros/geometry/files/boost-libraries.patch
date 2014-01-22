@@ -1,0 +1,12 @@
+diff -u a/tf/CMakeLists.txt b/tf/CMakeLists.txt
+--- a/tf/CMakeLists.txt
++++ b/tf/CMakeLists.txt
+@@ -14,7 +14,7 @@ rosbuild_genmsg()
+ rosbuild_gensrv()
+ 
+ rosbuild_add_library(tf src/tf.cpp src/transform_listener.cpp src/cache.cpp src/transform_broadcaster.cpp)
+-rosbuild_link_boost(tf thread signals)
++rosbuild_link_boost(tf thread signals system)
+ 
+ # Debug
+ rosbuild_add_executable(bin/empty_listener src/empty_listener.cpp)

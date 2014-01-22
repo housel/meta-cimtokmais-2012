@@ -1,0 +1,25 @@
+Index: diagnostic_updater/CMakeLists.txt
+===================================================================
+--- a/diagnostic_updater/CMakeLists.txt	(revision 39726)
++++ b/diagnostic_updater/CMakeLists.txt	(working copy)
+@@ -9,6 +9,7 @@
+ rosbuild_add_boost_directories()
+ 
+ rosbuild_add_executable(example src/example.cpp)
++rosbuild_link_boost(example system)
+ 
+ rosbuild_add_executable(diagnostic_updater_test test/diagnostic_updater_test.cpp)
+ rosbuild_add_gtest_build_flags(diagnostic_updater_test)
+Index: self_test/CMakeLists.txt
+===================================================================
+--- a/self_test/CMakeLists.txt	(revision 39726)
++++ b/self_test/CMakeLists.txt	(working copy)
+@@ -16,7 +16,7 @@
+ rosbuild_link_boost(run_selftest thread)
+ 
+ rosbuild_add_executable(selftest_example src/selftest_example.cpp)
+-rosbuild_link_boost(selftest_example thread)
++rosbuild_link_boost(selftest_example thread system)
+ 
+ add_subdirectory(test EXCLUDE_FROM_ALL)
+ 

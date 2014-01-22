@@ -1,0 +1,13 @@
+index d17ca8a..84c98e6 100644
+--- a/cmake/flann_utils.cmake
++++ a/cmake/flann_utils.cmake
+@@ -92,7 +92,8 @@ endmacro(flann_add_cuda_gtest)
+ macro(flann_add_pyunit file)
+     # find test file
+     set(_file_name _file_name-NOTFOUND)
+-    find_file(_file_name ${file} ${CMAKE_CURRENT_SOURCE_DIR})
++    find_file(_file_name ${file} ${CMAKE_CURRENT_SOURCE_DIR}
++              NO_CMAKE_FIND_ROOT_PATH)
+     if(NOT _file_name)
+         message(FATAL_ERROR "Can't find pyunit file \"${file}\"")
+     endif(NOT _file_name)

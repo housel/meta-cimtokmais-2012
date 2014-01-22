@@ -1,0 +1,12 @@
+diff --git a/git/tools/rosbag/src/recorder.cpp b/git/tools/rosbag/src/recorder.cpp
+--- a/git/tools/rosbag/src/recorder.cpp
++++ b/git/tools/rosbag/src/recorder.cpp
+@@ -436,7 +436,7 @@
+                 break;
+             }
+             boost::xtime xt;
+-            boost::xtime_get(&xt, boost::TIME_UTC);
++            boost::xtime_get(&xt, boost::TIME_UTC_);
+             xt.nsec += 250000000;
+             queue_condition_.timed_wait(lock, xt);
+             if (checkDuration(ros::Time::now()))

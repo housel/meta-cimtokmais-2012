@@ -1,0 +1,39 @@
+diff -u -r a/jpeg_streamer/CMakeLists.txt b/jpeg_streamer/CMakeLists.txt
+--- a/jpeg_streamer/CMakeLists.txt	2012-08-12 21:37:34.364302318 -0700
++++ b/jpeg_streamer/CMakeLists.txt	2012-08-13 19:12:15.000000000 -0700
+@@ -29,5 +29,6 @@
+ #rosbuild_add_executable(example examples/example.cpp)
+ #target_link_libraries(example ${PROJECT_NAME})
+ rosbuild_add_executable(jpeg_streamer src/jpeg_streamer.cpp src/mongoose.c)
+-rosbuild_link_boost(jpeg_streamer thread)
++rosbuild_link_boost(jpeg_streamer thread system)
++target_link_libraries(jpeg_streamer ${CMAKE_DL_LIBS})
+ 
+diff -u -r a/uvc_camera/CMakeLists.txt b/uvc_camera/CMakeLists.txt
+--- a/uvc_camera/CMakeLists.txt	2012-08-12 21:37:34.368302268 -0700
++++ b/uvc_camera/CMakeLists.txt	2012-08-13 17:58:31.000000000 -0700
+@@ -35,11 +35,11 @@
+ 
+ #rosbuild_add_executable(uvc_stereo src/uvc_stereo.cpp src/uvc_cam.cpp)
+ rosbuild_add_library(nodelet_uvc_camera src/nodelets.cpp src/camera.cpp src/stereo.cpp src/uvc_cam.cpp)
+-rosbuild_link_boost(nodelet_uvc_camera thread)
++rosbuild_link_boost(nodelet_uvc_camera thread system)
+ 
+ rosbuild_add_executable(camera_node src/camera_node.cpp src/camera.cpp src/uvc_cam.cpp)
+-rosbuild_link_boost(camera_node thread)
++rosbuild_link_boost(camera_node thread system)
+ 
+ rosbuild_add_executable(stereo_node src/stereo_node.cpp src/stereo.cpp src/uvc_cam.cpp)
+-rosbuild_link_boost(stereo_node thread)
++rosbuild_link_boost(stereo_node thread system)
+ 
+diff -u -r a/uvc_stereo/CMakeLists.txt b/uvc_stereo/CMakeLists.txt
+--- a/uvc_stereo/CMakeLists.txt	2012-08-12 21:37:34.372302218 -0700
++++ b/uvc_stereo/CMakeLists.txt	2012-08-13 17:58:55.000000000 -0700
+@@ -29,5 +29,5 @@
+ #rosbuild_add_executable(example examples/example.cpp)
+ #target_link_libraries(example ${PROJECT_NAME})
+ rosbuild_add_executable(uvc_stereo src/uvc_stereo.cpp src/uvc_cam.cpp)
+-rosbuild_link_boost(uvc_stereo thread)
++rosbuild_link_boost(uvc_stereo thread system)
+ 

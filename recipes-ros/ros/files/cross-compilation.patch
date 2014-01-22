@@ -1,0 +1,110 @@
+diff -u a/git/ros/tools/rosunit/cmake/rosunit-extras.cmake.in 
+--- a/git/tools/rosunit/cmake/rosunit-extras.cmake.in
++++ b/git/tools/rosunit/cmake/rosunit-extras.cmake.in
+@@ -2,7 +2,7 @@
+   if(rosunit_SOURCE_DIR)
+     find_program_required(ROSUNIT_EXE rosunit
+                           PATHS @PROJECT_SOURCE_DIR@/scripts
+-                          NO_DEFAULT_PATH)
++                          NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+   else()
+     find_program_required(ROSUNIT_EXE rosunit
+                           PATHS @CMAKE_INSTALL_PREFIX@/bin
+@@ -10,7 +10,9 @@
+   endif()
+ endmacro()
+ 
+-rosunit_initialize_tests()
++if(CMAKE_TESTING_ENABLED)
++  rosunit_initialize_tests()
++endif()
+ 
+ function(add_pyunit file)
+ 
+diff --git a/core/rosbuild/private.cmake b/git/core/rosbuild/private.cmake
+index 4eacebd..c66c10e 100644
+--- a/git/core/rosbuild/private.cmake
++++ b/git/core/rosbuild/private.cmake
+@@ -179,7 +179,8 @@ macro(_rosbuild_add_rostest file)
+ 
+   # Check that the file exists, #1621
+   set(_file_name _file_name-NOTFOUND)
+-  find_file(_file_name ${file} ${PROJECT_SOURCE_DIR} /)
++  find_file(_file_name ${file} ${PROJECT_SOURCE_DIR} /
++            NO_CMAKE_FIND_ROOT_PATH)
+   if(NOT _file_name)
+     message(FATAL_ERROR "Can't find rostest file \"${file}\"")
+   endif(NOT _file_name)
+@@ -219,7 +220,8 @@ macro(_rosbuild_add_pyunit file)
+ 
+   # Check that the file exists, #1621
+   set(_file_name _file_name-NOTFOUND)
+-  find_file(_file_name ${file} ${PROJECT_SOURCE_DIR} /)
++  find_file(_file_name ${file} ${PROJECT_SOURCE_DIR} /
++            NO_CMAKE_FIND_ROOT_PATH)
+   if(NOT _file_name)
+     message(FATAL_ERROR "Can't find pyunit file \"${file}\"")
+   endif(NOT _file_name)
+@@ -256,7 +258,8 @@ endmacro(_rosbuild_add_pyunit)
+ macro(_rosbuild_add_roslaunch_check targetname file)
+   # Check that the file exists, #1621
+   set(_file_name _file_name-NOTFOUND)
+-  find_file(_file_name ${file} ${CMAKE_CURRENT_SOURCE_DIR} /)
++  find_file(_file_name ${file} ${CMAKE_CURRENT_SOURCE_DIR} /
++            NO_CMAKE_FIND_ROOT_PATH)
+   if(NOT _file_name)
+     message(FATAL_ERROR "Can't find roslaunch file or directory \"${file}\"")
+   endif(NOT _file_name)
+@@ -345,7 +348,8 @@ macro(_rosbuild_add_library lib libname type)
+   get_target_property(_srclist ${lib} SOURCES)
+   foreach(_src ${_srclist})
+     set(_file_name _file_name-NOTFOUND)
+-    find_file(_file_name ${_src} ${CMAKE_CURRENT_SOURCE_DIR} /)
++    find_file(_file_name ${_src} ${CMAKE_CURRENT_SOURCE_DIR} /
++              NO_CMAKE_FIND_ROOT_PATH)
+     if(NOT _file_name)
+       message("[rosbuild] Couldn't find source file ${_src}; assuming that it is in ${CMAKE_CURRENT_SOURCE_DIR} and will be generated later")
+       set(_file_name ${CMAKE_CURRENT_SOURCE_DIR}/${_src})
+diff --git a/git/core/rosbuild/public.cmake b/git/core/rosbuild/public.cmake
+index 2441963..c0bd857 100644
+--- a/git/core/rosbuild/public.cmake
++++ b/git/core/rosbuild/public.cmake
+@@ -439,6 +439,14 @@
+   if (NOT GTEST_EXE)
+     set(_gtest_LIBRARIES -lgtest)
+     # Couldn't find gtest-config. Hoping that gtest is in our path either in the system install or where ROS_BINDEPS points to
++
++    if (NOT gtest_disable_pthreads)
++      # Defines CMAKE_USE_PTHREADS_INIT and CMAKE_THREAD_LIBS_INIT.
++      find_package(Threads)
++      if (CMAKE_USE_PTHREADS_INIT)
++	list(APPEND _gtest_LIBRARIES ${CMAKE_THREAD_LIBS_INIT})
++      endif()
++    endif(NOT gtest_disable_pthreads)
+   else (NOT GTEST_EXE)
+ 
+   execute_process(COMMAND ${GTEST_EXE} --includedir
+@@ -499,7 +507,8 @@
+   get_target_property(_srclist ${exe} SOURCES)
+   foreach(_src ${_srclist})
+     set(_file_name _file_name-NOTFOUND)
+-    find_file(_file_name ${_src} ${CMAKE_CURRENT_SOURCE_DIR} /)
++    find_file(_file_name ${_src} ${CMAKE_CURRENT_SOURCE_DIR} /
++              NO_CMAKE_FIND_ROOT_PATH)
+     if(NOT _file_name)
+       message("[rosbuild] Couldn't find source file ${_src}; assuming that it is in ${CMAKE_CURRENT_SOURCE_DIR} and will be generated later")
+       set(_file_name ${CMAKE_CURRENT_SOURCE_DIR}/${_src})
+diff --git a/git/core/rosbuild/rosconfig.cmake b/git/core/rosbuild/rosconfig.cmake
+index 5e13c2b..1a804d7 100644
+--- a/git/core/rosbuild/rosconfig.cmake
++++ b/git/core/rosbuild/rosconfig.cmake
+@@ -35,7 +35,8 @@ endif(USERCONFIG)
+ find_file(PROJECTCONFIG
+           rosconfig.cmake
+           PATHS ${PROJECT_SOURCE_DIR}
+-          NO_DEFAULT_PATH)
++          NO_DEFAULT_PATH
++          NO_CMAKE_FIND_ROOT_PATH)
+ if(PROJECTCONFIG)
+   message("including package's config file: ${PROJECTCONFIG}")
+   include(${PROJECTCONFIG})

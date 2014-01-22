@@ -1,0 +1,9 @@
+diff -ru a/test_nodelet/CMakeLists.txt b/test_nodelet/CMakeLists.txt
+--- a/test_nodelet/CMakeLists.txt
++++ b/test_nodelet/CMakeLists.txt
+@@ -33,4 +33,4 @@
+ 
+ # Not a real test. Tries to measure overhead of CallbackQueueManager.
+ rosbuild_add_executable(benchmark src/benchmark.cpp)
+-rosbuild_link_boost(benchmark thread)
++rosbuild_link_boost(benchmark system thread)
